@@ -5,6 +5,8 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.util.zip.GZIPOutputStream;
 
 import org.apache.maven.plugin.MojoExecutionException;
@@ -98,6 +100,15 @@ public class YuiCompressorMojo extends MojoSupport {
      * @parameter expression="${maven.yuicompressor.gzip}" default-value="false"
      */
     private boolean gzip;
+    
+    /**
+     * request to create a gzipped version of the yuicompressed/aggregation files only.
+     * Do not peform any minuzation.
+     *
+     * @parameter expression="${maven.yuicompressor.gzipOnly}" default-value="false"
+     */
+    private boolean gzipOnly;
+    
 
     /**
      * show statistics (compression ratio).
@@ -147,9 +158,11 @@ public class YuiCompressorMojo extends MojoSupport {
 
     @Override
     protected void processFile(SourceFile src) throws Exception {
+    	
         if (getLog().isDebugEnabled()) {
             getLog().debug("compress file :" + src.toFile()+ " to " + src.toDestFile(suffix));
         }
+        
         File inFile = src.toFile();
         File outFile = src.toDestFile(suffix);
 
@@ -161,38 +174,63 @@ public class YuiCompressorMojo extends MojoSupport {
             return;
         }
 
-        InputStreamReader in = null;
-        OutputStreamWriter out = null;
-        File outFileTmp = new File(outFile.getAbsolutePath() + ".tmp");
-        FileUtils.forceDelete(outFileTmp);
-        try {
-            in = new InputStreamReader(new FileInputStream(inFile), encoding);
-            if (!outFile.getParentFile().exists() && !outFile.getParentFile().mkdirs()) {
-                throw new MojoExecutionException( "Cannot create resource output directory: " + outFile.getParentFile() );
-            }
-            getLog().debug("use a temporary outputfile (in case in == out)");
-
-            getLog().debug("start compression");
-            out = new OutputStreamWriter(new FileOutputStream(outFileTmp), encoding);
-            if (".js".equalsIgnoreCase(src.getExtension())) {
-                JavaScriptCompressor compressor = new JavaScriptCompressor(in, jsErrorReporter_);
-                compressor.compress(out, linebreakpos, !nomunge, jswarn, preserveAllSemiColons, disableOptimizations);
-            } else if (".css".equalsIgnoreCase(src.getExtension())) {
-                CssCompressor compressor = new CssCompressor(in);
-                compressor.compress(out, linebreakpos);
-            }
-            getLog().debug("end compression");
-        } finally {
-            IOUtil.close(in);
-            IOUtil.close(out);
+        if ( ! gzipOnly ) {
+        	
+        	InputStreamReader in = null;
+            OutputStreamWriter out = null;
+	        File outFileTmp = new File(outFile.getAbsolutePath() + ".tmp");
+	        FileUtils.forceDelete(outFileTmp);
+	        try {
+	            in = new InputStreamReader(new FileInputStream(inFile), encoding);
+	            if (!outFile.getParentFile().exists() && !outFile.getParentFile().mkdirs()) {
+	                throw new MojoExecutionException( "Cannot create resource output directory: " + outFile.getParentFile() );
+	            }
+	            getLog().debug("use a temporary outputfile (in case in == out)");
+	
+	            getLog().debug("start compression");
+	            out = new OutputStreamWriter(new FileOutputStream(outFileTmp), encoding);
+	            if (".js".equalsIgnoreCase(src.getExtension())) {
+	                JavaScriptCompressor compressor = new JavaScriptCompressor(in, jsErrorReporter_);
+	                compressor.compress(out, linebreakpos, !nomunge, jswarn, preserveAllSemiColons, disableOptimizations);
+	            } else if (".css".equalsIgnoreCase(src.getExtension())) {
+	                CssCompressor compressor = new CssCompressor(in);
+	                compressor.compress(out, linebreakpos);
+	            }
+	            getLog().debug("end compression");
+	        } finally {
+	            IOUtil.close(in);
+	            IOUtil.close(out);
+	        }
+	        FileUtils.forceDelete(outFile);
+	        FileUtils.rename(outFileTmp, outFile);
+        } else {
+        	gzip = true;
+        	FileInputStream in = new FileInputStream(inFile);
+        	FileOutputStream out = new FileOutputStream(outFile);
+        	
+        	try {
+	        	if (!outFile.getParentFile().exists() && !outFile.getParentFile().mkdirs()) {
+	                throw new MojoExecutionException( "Cannot create resource output directory: " + outFile.getParentFile() );
+	            }
+	        	
+	        	byte[] buffer = new byte[4096];
+	            int bytesRead;
+	
+	            while ((bytesRead = in.read(buffer)) != -1)
+	              out.write(buffer, 0, bytesRead); // write
+        	} finally {
+        		IOUtil.close(in);
+	            IOUtil.close(out);
+        	}
         }
-        FileUtils.forceDelete(outFile);
-        FileUtils.rename(outFileTmp, outFile);
+        
         File gzipped = gzipIfRequested(outFile);
         if (statistics) {
             inSizeTotal_ += inFile.length();
             outSizeTotal_ += outFile.length();
-            getLog().info(String.format("%s (%db) -> %s (%db)[%d%%]", inFile.getName(), inFile.length(), outFile.getName(), outFile.length(), ratioOfSize(inFile, outFile)));
+            if ( !gzipOnly ) {
+            	getLog().info(String.format("%s (%db) -> %s (%db)[%d%%]", inFile.getName(), inFile.length(), outFile.getName(), outFile.length(), ratioOfSize(inFile, outFile)));
+            }
             if (gzipped != null) {
                 getLog().info(String.format("%s (%db) -> %s (%db)[%d%%]", inFile.getName(), inFile.length(), gzipped.getName(), gzipped.length(), ratioOfSize(inFile, gzipped)));
             }

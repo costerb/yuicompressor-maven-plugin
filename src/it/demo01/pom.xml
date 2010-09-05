@@ -59,6 +59,7 @@
           <nosuffix>true</nosuffix>
           <!--nomunge>true</nomunge-->
           <force>true</force>
+          <!--gzipOnly>true</gzipOnly-->
           <gzip>true</gzip>
           <excludes>
             <exclude>**/*.pack.js</exclude>
